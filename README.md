@@ -67,10 +67,10 @@ Display Name: DELL U2723QE-0
 
 ## Credits / Origin
 
-This project is a fork and substantial rework of the excellent `displaymode` by p00ya:
-- Original repository: https://github.com/p00ya/displaymode
-- The original adds a CLI utility for macOS (10.6+). This repo focuses on a modern menu bar app with Shortcuts. Some ideas and constants were informed by the original project. License retained in `LICENSE.txt`.
+- Conceptual reference: `displaymode` by p00ya (Apache 2.0) — used as inspiration only; this app is a clean, independent implementation focused on a menu bar/Shortcuts experience.
+- Modern menu bar app and Shortcuts integration authored for this project.
 
 ## License
 
-See `LICENSE.txt`.
+- Licensed under Apache 2.0. See `LICENSE.txt`.
+- Copyright 2025 Ken Ng.

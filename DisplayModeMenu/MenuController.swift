@@ -8,10 +8,19 @@
 import AppKit
 import CoreGraphics
 
-class MenuController {
+class MenuController: NSObject, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private let displayService = DisplayService.shared
-    private var showAllModes = false  // Toggle for showing all modes
+    private var showLowResolution = false  // Toggle for showing non-HiDPI modes
+    private var isMenuOpen = false
+    
+    // Favorite resolutions to always display at the top
+    private let favoriteResolutions: [(width: Int, height: Int, refreshRate: Double, hiDPI: Bool)] = [
+        (3840, 2160, 60, true),   // 4K@60 HiDPI
+        (3200, 1800, 60, true),   // 3200x1800@60 HiDPI
+        (2560, 1440, 60, true),   // 2560x1440@60 HiDPI
+        (1920, 1080, 60, true),   // 1920x1080@60 HiDPI
+    ]
     
     func setup() {
         // Create status bar item
@@ -33,100 +42,32 @@ class MenuController {
             NSLog("[MenuController] ERROR: button is nil!")
         }
         
+        // Restore persisted display modes from previous session
+        restorePersistedDisplayModes()
+        
         // Build initial menu
         refreshMenu()
     }
     
     func refreshMenu() {
-        let menu = NSMenu()
-        
-        let displays = displayService.getDisplays()
-        
-        if displays.isEmpty {
-            let item = NSMenuItem(title: "No Displays Found", action: nil, keyEquivalent: "")
-            item.isEnabled = false
-            menu.addItem(item)
-        } else {
-            // Add menu items for each display
-            for (index, display) in displays.enumerated() {
-                if index > 0 {
-                    menu.addItem(NSMenuItem.separator())
-                }
-                
-                // Display header
-                let displayHeader = NSMenuItem(title: display.name, action: nil, keyEquivalent: "")
-                displayHeader.isEnabled = false
-                menu.addItem(displayHeader)
-                
-                // Get modes for this display
-                let allModes = displayService.getModes(for: display.id)
-                
-                // Filter to preferred resolutions unless showAllModes is enabled
-                let modes: [DisplayModeInfo]
-                if showAllModes {
-                    // Filter out modes below 60Hz
-                    modes = allModes.filter { $0.refreshRate >= 60 }
-                } else {
-                    // Only show HiDPI modes for 1920x1080 and 2560x1440, with refresh >= 60Hz
-                    modes = allModes.filter { mode in
-                        mode.refreshRate >= 60 && (
-                            mode.isCurrent || (
-                                mode.isHiDPI && (
-                                    (mode.width == 1920 && mode.height == 1080) ||
-                                    (mode.width == 2560 && mode.height == 1440)
-                                )
-                            )
-                        )
-                    }
-                }
-                
-                if modes.isEmpty {
-                    let item = NSMenuItem(title: "  No modes available", action: nil, keyEquivalent: "")
-                    item.isEnabled = false
-                    menu.addItem(item)
-                } else {
-                    // Group modes by resolution for cleaner menu
-                    var lastResolution: String? = nil
-                    
-                    for mode in modes {
-                        let resolution = "\(mode.width)×\(mode.height)"
-                        
-                        // Add separator between different resolutions
-                        if let last = lastResolution, last != resolution {
-                            // Just visual grouping, no separator needed for now
-                        }
-                        lastResolution = resolution
-                        
-                        let item = NSMenuItem(
-                            title: "  \(mode.label)",
-                            action: #selector(modeSelected(_:)),
-                            keyEquivalent: ""
-                        )
-                        item.target = self
-                        item.representedObject = ModeSelection(displayID: display.id, mode: mode)
-                        
-                        // Mark current mode with checkmark
-                        if mode.isCurrent {
-                            item.state = .on
-                        }
-                        
-                        menu.addItem(item)
-                    }
-                }
-            }
+        // If menu is open, update in place to avoid closing when submenus open
+        if isMenuOpen, statusItem?.menu != nil {
+            rebuildMenuInPlace()
+            return
         }
+
+        let menu = NSMenu()
+        menu.delegate = self
         
-        // Add utility items
-        menu.addItem(NSMenuItem.separator())
-        
-        let showAllItem = NSMenuItem(
-            title: "Show All Modes",
-            action: #selector(toggleShowAllModes),
-            keyEquivalent: "a"
+        // Utility items
+        let showLowResItem = NSMenuItem(
+            title: "Show Low Resolution",
+            action: #selector(toggleShowLowResolution),
+            keyEquivalent: "l"
         )
-        showAllItem.target = self
-        showAllItem.state = showAllModes ? .on : .off
-        menu.addItem(showAllItem)
+        showLowResItem.target = self
+        showLowResItem.state = showLowResolution ? .on : .off
+        menu.addItem(showLowResItem)
         
         let refreshItem = NSMenuItem(
             title: "Refresh Displays",
@@ -138,6 +79,120 @@ class MenuController {
         
         menu.addItem(NSMenuItem.separator())
         
+        let displays = displayService.getDisplays()
+        
+        if displays.isEmpty {
+            let item = NSMenuItem(title: "No Displays Found", action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            menu.addItem(item)
+        } else {
+            // Favorites section
+            let favoritesHeader = NSMenuItem(title: "Favourites", action: nil, keyEquivalent: "")
+            favoritesHeader.isEnabled = false
+            menu.addItem(favoritesHeader)
+            
+            var favoriteAdded = false
+            for display in displays {
+                var displayHasFavorite = false
+                var seenFavorites = Set<String>()
+                
+                for favorite in favoriteResolutions {
+                    let displayModes = displayService.getModes(for: display.id)
+                    
+                    if let matchingMode = displayModes.first(where: { mode in
+                        mode.width == favorite.width &&
+                        mode.height == favorite.height &&
+                        Int(mode.refreshRate) == Int(favorite.refreshRate) &&
+                        mode.isHiDPI == favorite.hiDPI
+                    }) {
+                        let key = "\(matchingMode.width)x\(matchingMode.height)@\(Int(matchingMode.refreshRate))_\(matchingMode.isHiDPI)"
+                        guard !seenFavorites.contains(key) else { continue }
+                        seenFavorites.insert(key)
+                        
+                        if !displayHasFavorite {
+                            // Add display header
+                            let displayHeader = NSMenuItem(title: display.name, action: nil, keyEquivalent: "")
+                            displayHeader.isEnabled = false
+                            menu.addItem(displayHeader)
+                            displayHasFavorite = true
+                            favoriteAdded = true
+                        }
+                        
+                        let modeLabel = matchingMode.isHiDPI ? "\(matchingMode.label) [HiDPI]" : matchingMode.label
+                        let title = "  ☆ \(modeLabel)"
+                        
+                        let item = NSMenuItem(title: title, action: #selector(modeSelected(_:)), keyEquivalent: "")
+                        item.target = self
+                        item.representedObject = ModeSelection(displayID: display.id, mode: matchingMode)
+                        if matchingMode.isCurrent {
+                            item.state = .on
+                        }
+                        menu.addItem(item)
+                    }
+                }
+            }
+            
+            if !favoriteAdded {
+                let noFav = NSMenuItem(title: "  None available", action: nil, keyEquivalent: "")
+                noFav.isEnabled = false
+                menu.addItem(noFav)
+            }
+            
+            menu.addItem(NSMenuItem.separator())
+            
+            // All Modes section
+            let allModesHeader = NSMenuItem(title: "All Modes", action: nil, keyEquivalent: "")
+            allModesHeader.isEnabled = false
+            menu.addItem(allModesHeader)
+            
+            for display in displays {
+                let displaySubmenu = NSMenu()
+                let allModes = displayService.getModes(for: display.id)
+                
+                // Filter modes: show all 60Hz+; include non-HiDPI only when low-res toggle is on
+                let modes: [DisplayModeInfo]
+                let filteredModes = allModes.filter { mode in
+                    mode.refreshRate >= 60 && (mode.isCurrent || mode.isHiDPI || showLowResolution)
+                }
+                
+                // Deduplicate modes
+                var seenModes = Set<String>()
+                modes = filteredModes.filter { mode in
+                    let key = "\(mode.width)x\(mode.height)@\(Int(mode.refreshRate))_\(mode.isHiDPI)"
+                    let isNew = !seenModes.contains(key)
+                    seenModes.insert(key)
+                    return isNew
+                }
+                
+                if modes.isEmpty {
+                    let emptyItem = NSMenuItem(title: "No modes available", action: nil, keyEquivalent: "")
+                    emptyItem.isEnabled = false
+                    displaySubmenu.addItem(emptyItem)
+                } else {
+                    for mode in modes {
+                        let modeLabel = mode.isHiDPI ? "\(mode.label) [HiDPI]" : mode.label
+                        let item = NSMenuItem(
+                            title: modeLabel,
+                            action: #selector(modeSelected(_:)),
+                            keyEquivalent: ""
+                        )
+                        item.target = self
+                        item.representedObject = ModeSelection(displayID: display.id, mode: mode)
+                        if mode.isCurrent {
+                            item.state = .on
+                        }
+                        displaySubmenu.addItem(item)
+                    }
+                }
+                
+                let displayItem = NSMenuItem(title: display.name, action: nil, keyEquivalent: "")
+                displayItem.submenu = displaySubmenu
+                menu.addItem(displayItem)
+            }
+        }
+        
+        // Quit at the bottom
+        menu.addItem(NSMenuItem.separator())
         let quitItem = NSMenuItem(
             title: "Quit DisplayMode",
             action: #selector(quitAction),
@@ -162,6 +217,9 @@ class MenuController {
                 message: "Could not set display to \(selection.mode.label). The mode may not be supported."
             )
         } else {
+            // Persist the mode selection so it survives app termination
+            saveDisplayModePersistence(displayID: selection.displayID, mode: selection.mode)
+            
             // Refresh menu after mode change
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 self.refreshMenu()
@@ -178,8 +236,9 @@ class MenuController {
         }
     }
     
-    @objc private func toggleShowAllModes(_ sender: NSMenuItem) {
-        showAllModes.toggle()
+
+    @objc private func toggleShowLowResolution(_ sender: NSMenuItem) {
+        showLowResolution.toggle()
         // Keep menu open by updating after a brief delay
         DispatchQueue.main.async {
             self.refreshMenu()
@@ -191,97 +250,20 @@ class MenuController {
     /// Rebuild menu without closing it (updates in place)
     private func rebuildMenuInPlace() {
         guard let menu = statusItem?.menu else { return }
+        menu.delegate = self
         
         // Remove all items
         menu.removeAllItems()
         
-        let displays = displayService.getDisplays()
-        
-        if displays.isEmpty {
-            let item = NSMenuItem(title: "No Displays Found", action: nil, keyEquivalent: "")
-            item.isEnabled = false
-            menu.addItem(item)
-        } else {
-            // Add menu items for each display
-            for (index, display) in displays.enumerated() {
-                if index > 0 {
-                    menu.addItem(NSMenuItem.separator())
-                }
-                
-                // Display header
-                let displayHeader = NSMenuItem(title: display.name, action: nil, keyEquivalent: "")
-                displayHeader.isEnabled = false
-                menu.addItem(displayHeader)
-                
-                // Get modes for this display
-                let allModes = displayService.getModes(for: display.id)
-                
-                // Filter to preferred resolutions unless showAllModes is enabled
-                let modes: [DisplayModeInfo]
-                if showAllModes {
-                    // Filter out modes below 60Hz
-                    modes = allModes.filter { $0.refreshRate >= 60 }
-                } else {
-                    // Only show HiDPI modes for 1920x1080 and 2560x1440, with refresh >= 60Hz
-                    modes = allModes.filter { mode in
-                        mode.refreshRate >= 60 && (
-                            mode.isCurrent || (
-                                mode.isHiDPI && (
-                                    (mode.width == 1920 && mode.height == 1080) ||
-                                    (mode.width == 2560 && mode.height == 1440)
-                                )
-                            )
-                        )
-                    }
-                }
-                
-                if modes.isEmpty {
-                    let item = NSMenuItem(title: "  No modes available", action: nil, keyEquivalent: "")
-                    item.isEnabled = false
-                    menu.addItem(item)
-                } else {
-                    // Group modes by resolution for cleaner menu
-                    var lastResolution: String? = nil
-                    
-                    for mode in modes {
-                        let resolution = "\(mode.width)×\(mode.height)"
-                        
-                        // Add separator between different resolutions
-                        if let last = lastResolution, last != resolution {
-                            // Just visual grouping, no separator needed for now
-                        }
-                        lastResolution = resolution
-                        
-                        let item = NSMenuItem(
-                            title: "  \(mode.label)",
-                            action: #selector(modeSelected(_:)),
-                            keyEquivalent: ""
-                        )
-                        item.target = self
-                        item.representedObject = ModeSelection(displayID: display.id, mode: mode)
-                        
-                        // Mark current mode with checkmark
-                        if mode.isCurrent {
-                            item.state = .on
-                        }
-                        
-                        menu.addItem(item)
-                    }
-                }
-            }
-        }
-        
-        // Add utility items
-        menu.addItem(NSMenuItem.separator())
-        
-        let showAllItem = NSMenuItem(
-            title: "Show All Modes",
-            action: #selector(toggleShowAllModes),
-            keyEquivalent: "a"
+        // Utility items
+        let showLowResItem = NSMenuItem(
+            title: "Show Low Resolution",
+            action: #selector(toggleShowLowResolution),
+            keyEquivalent: "l"
         )
-        showAllItem.target = self
-        showAllItem.state = showAllModes ? .on : .off
-        menu.addItem(showAllItem)
+        showLowResItem.target = self
+        showLowResItem.state = showLowResolution ? .on : .off
+        menu.addItem(showLowResItem)
         
         let refreshItem = NSMenuItem(
             title: "Refresh Displays",
@@ -293,6 +275,120 @@ class MenuController {
         
         menu.addItem(NSMenuItem.separator())
         
+        let displays = displayService.getDisplays()
+        
+        if displays.isEmpty {
+            let item = NSMenuItem(title: "No Displays Found", action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            menu.addItem(item)
+        } else {
+            // Favorites section
+            let favoritesHeader = NSMenuItem(title: "Favourites", action: nil, keyEquivalent: "")
+            favoritesHeader.isEnabled = false
+            menu.addItem(favoritesHeader)
+            
+            var favoriteAdded = false
+            for display in displays {
+                var displayHasFavorite = false
+                var seenFavorites = Set<String>()
+                
+                for favorite in favoriteResolutions {
+                    let displayModes = displayService.getModes(for: display.id)
+                    
+                    if let matchingMode = displayModes.first(where: { mode in
+                        mode.width == favorite.width &&
+                        mode.height == favorite.height &&
+                        Int(mode.refreshRate) == Int(favorite.refreshRate) &&
+                        mode.isHiDPI == favorite.hiDPI
+                    }) {
+                        let key = "\(matchingMode.width)x\(matchingMode.height)@\(Int(matchingMode.refreshRate))_\(matchingMode.isHiDPI)"
+                        guard !seenFavorites.contains(key) else { continue }
+                        seenFavorites.insert(key)
+                        
+                        if !displayHasFavorite {
+                            // Add display header
+                            let displayHeader = NSMenuItem(title: display.name, action: nil, keyEquivalent: "")
+                            displayHeader.isEnabled = false
+                            menu.addItem(displayHeader)
+                            displayHasFavorite = true
+                            favoriteAdded = true
+                        }
+                        
+                        let modeLabel = matchingMode.isHiDPI ? "\(matchingMode.label) [HiDPI]" : matchingMode.label
+                        let title = "  ☆ \(modeLabel)"
+                        
+                        let item = NSMenuItem(title: title, action: #selector(modeSelected(_:)), keyEquivalent: "")
+                        item.target = self
+                        item.representedObject = ModeSelection(displayID: display.id, mode: matchingMode)
+                        if matchingMode.isCurrent {
+                            item.state = .on
+                        }
+                        menu.addItem(item)
+                    }
+                }
+            }
+            
+            if !favoriteAdded {
+                let noFav = NSMenuItem(title: "  None available", action: nil, keyEquivalent: "")
+                noFav.isEnabled = false
+                menu.addItem(noFav)
+            }
+            
+            menu.addItem(NSMenuItem.separator())
+            
+            // All Modes section
+            let allModesHeader = NSMenuItem(title: "All Modes", action: nil, keyEquivalent: "")
+            allModesHeader.isEnabled = false
+            menu.addItem(allModesHeader)
+            
+            for display in displays {
+                let displaySubmenu = NSMenu()
+                let allModes = displayService.getModes(for: display.id)
+                
+                // Filter modes: show all 60Hz+; include non-HiDPI only when low-res toggle is on
+                let modes: [DisplayModeInfo]
+                let filteredModes = allModes.filter { mode in
+                    mode.refreshRate >= 60 && (mode.isCurrent || mode.isHiDPI || showLowResolution)
+                }
+                
+                // Deduplicate modes
+                var seenModes = Set<String>()
+                modes = filteredModes.filter { mode in
+                    let key = "\(mode.width)x\(mode.height)@\(Int(mode.refreshRate))_\(mode.isHiDPI)"
+                    let isNew = !seenModes.contains(key)
+                    seenModes.insert(key)
+                    return isNew
+                }
+                
+                if modes.isEmpty {
+                    let emptyItem = NSMenuItem(title: "No modes available", action: nil, keyEquivalent: "")
+                    emptyItem.isEnabled = false
+                    displaySubmenu.addItem(emptyItem)
+                } else {
+                    for mode in modes {
+                        let modeLabel = mode.isHiDPI ? "\(mode.label) [HiDPI]" : mode.label
+                        let item = NSMenuItem(
+                            title: modeLabel,
+                            action: #selector(modeSelected(_:)),
+                            keyEquivalent: ""
+                        )
+                        item.target = self
+                        item.representedObject = ModeSelection(displayID: display.id, mode: mode)
+                        if mode.isCurrent {
+                            item.state = .on
+                        }
+                        displaySubmenu.addItem(item)
+                    }
+                }
+                
+                let displayItem = NSMenuItem(title: display.name, action: nil, keyEquivalent: "")
+                displayItem.submenu = displaySubmenu
+                menu.addItem(displayItem)
+            }
+        }
+        
+        // Quit at the bottom
+        menu.addItem(NSMenuItem.separator())
         let quitItem = NSMenuItem(
             title: "Quit DisplayMode",
             action: #selector(quitAction),
@@ -303,7 +399,50 @@ class MenuController {
     }
     
     @objc private func quitAction() {
+        // Quit app while keeping the current display resolution
+        // (no reset to previous resolution)
         NSApplication.shared.terminate(nil)
+    }
+    
+    private func saveDisplayModePersistence(displayID: CGDirectDisplayID, mode: DisplayModeInfo) {
+        let key = "DisplayMode_\(displayID)"
+        let modeData: [String: Any] = [
+            "width": mode.width,
+            "height": mode.height,
+            "refreshRate": mode.refreshRate,
+            "isHiDPI": mode.isHiDPI,
+            "timestamp": Date().timeIntervalSince1970
+        ]
+        UserDefaults.standard.set(modeData, forKey: key)
+        NSLog("[MenuController] Saved display mode for display \(displayID): \(mode.label)")
+    }
+    
+    private func restorePersistedDisplayModes() {
+        let displays = displayService.getDisplays()
+        
+        for display in displays {
+            let key = "DisplayMode_\(display.id)"
+            guard let modeData = UserDefaults.standard.dictionary(forKey: key) as? [String: Any],
+                  let width = modeData["width"] as? Int,
+                  let height = modeData["height"] as? Int,
+                  let refreshRate = modeData["refreshRate"] as? Double else {
+                continue
+            }
+            
+            let allModes = displayService.getModes(for: display.id)
+            
+            // Find matching mode
+            if let matchingMode = allModes.first(where: { mode in
+                mode.width == width && mode.height == height && abs(mode.refreshRate - refreshRate) < 0.5
+            }) {
+                let success = displayService.setMode(matchingMode, for: display.id)
+                if success {
+                    NSLog("[MenuController] Restored display mode for \(display.name): \(matchingMode.label)")
+                } else {
+                    NSLog("[MenuController] Failed to restore display mode for \(display.name)")
+                }
+            }
+        }
     }
     
     private func showAlert(title: String, message: String) {
@@ -313,6 +452,15 @@ class MenuController {
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+
+    // MARK: - NSMenuDelegate
+    func menuWillOpen(_ menu: NSMenu) {
+        isMenuOpen = true
+    }
+    
+    func menuDidClose(_ menu: NSMenu) {
+        isMenuOpen = false
     }
 }
 

@@ -16,9 +16,10 @@ make release
 
 A lightweight macOS menu bar app for switching display resolutions, with Shortcuts integration. Requires macOS 13+ (Ventura or later).
 
-- Shows only useful modes by default: 1920×1080 @ 60Hz (HiDPI) and 2560×1440 @ 60Hz (HiDPI)
+- Favorites pinned at the top: 2560×1440@60 HiDPI and 1920×1080@60 HiDPI for each display
+- Per-display submenus under “All Modes”; shows all modes ≥60Hz and respects the low-resolution toggle
+- Low Resolution toggle (⌘L) to include non-HiDPI modes; off by default
 - Hides all modes below 60Hz
-- Toggle "Show All Modes" (⌘A) to see every available mode
 - Integrates with Shortcuts to set a display mode like `1920x1080@60`
 - Auto-refreshes on display hot-plug/unplug
 
@@ -35,11 +36,12 @@ The app runs as a background (LSUIElement) menu bar app.
 ## Using the Menu
 
 - Click the 🖥️ icon in the menu bar
-- For each display, you'll see:
-  - Current mode (✓)
-  - By default: 1920×1080 @ 60Hz (HiDPI) and 2560×1440 @ 60Hz (HiDPI)
-  - No low-resolution entries and nothing under 60Hz
-  - Enable "Show All Modes" (⌘A) to see everything supported and above 60Hz
+- Favorites section (per display):
+  - ☆ 2560×1440@60 HiDPI
+  - ☆ 1920×1080@60 HiDPI
+- All Modes: each display has a submenu listing all modes ≥60Hz
+- Low Resolution toggle (⌘L): when on, non-HiDPI variants appear in All Modes (favorites remain HiDPI)
+- Current mode is checkmarked
 
 ## Shortcuts Integration
 
@@ -61,9 +63,9 @@ Display Name: DELL U2723QE-0
 
 ## Notes on Mode Listing
 
-- The app queries all display modes and filters for clarity
-- Default list only shows HiDPI 1080p/1440p at ≥ 60Hz
-- "Show All Modes" reveals every available mode that's ≥ 60Hz
+- Favorites (per display): 2560×1440@60 HiDPI, 1920×1080@60 HiDPI
+- All Modes submenu: all modes ≥60Hz; includes non-HiDPI only when Low Resolution is enabled
+- Current mode is always shown (and checkmarked)
 
 ## Credits / Origin
 

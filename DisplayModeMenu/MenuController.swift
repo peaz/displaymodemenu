@@ -17,7 +17,6 @@ class MenuController: NSObject, NSMenuDelegate {
     // Favorite resolutions to always display at the top
     private let favoriteResolutions: [(width: Int, height: Int, refreshRate: Double, hiDPI: Bool)] = [
         (3840, 2160, 60, false),   // 4K@60 HiDPI
-        (3200, 1800, 60, true),   // 3200x1800@60 HiDPI
         (2560, 1440, 60, true),   // 2560x1440@60 HiDPI
         (1920, 1080, 60, true),   // 1920x1080@60 HiDPI
     ]

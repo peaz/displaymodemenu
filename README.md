@@ -3,10 +3,10 @@
 # DisplayMode Menu
 
 A lightweight macOS menu bar app for switching display resolutions, with Shortcuts integration. Requires macOS 13+ (Ventura or later).
-
-- Favorites pinned at the top: 2560×1440@60 HiDPI and 1920×1080@60 HiDPI for each display
-- Per-display submenus under “All Modes”; shows all modes ≥60Hz and respects the low-resolution toggle
-- Integrates with Shortcuts to set a display mode like `1920x1080@60`
+- **Customizable Favorites**: Configure your preferred display modes in Settings - comes with 22 default resolutions
+- **Smart Display**: Current mode highlighted in bold blue, click display names to copy them
+- **Per-Display Submenus**: All modes organized by display, filtered by refresh rate (≥60Hz by default)
+- **Shortcuts Integration**: Dual-format support - use Settings format (`2560,1440,60,true`) or legacy (`1920x1080@60`)
 
 > Tip: System Settings > Displays can also list resolutions (Advanced → "Show resolutions as list").
 ## Download & Install
@@ -56,30 +56,18 @@ make clean release
 ## Using DisplayMode Menu
 
 - Click the 🖥️ icon in the menu bar
-- Favorites section (per display) - customizable in Settings
+- Favorites section (per display). Example:
+  - 3840 x 2160 @ 60
+  - 2560 × 1440 @ 60 [HiDPI]
+  - 1920 × 1080 @ 60 [HiDPI]
 - All Modes: each display has a submenu listing all modes
-- Click on the resolution to change the display mode
-- Low resolution modes and minimum refresh rates can be set in the settings for the All Modes list
-- Current mode(s) will be highlighted in bold, blue font
-- Favourites can be set in the app settings
-- Refresh Displays when displays are added or changed
+- Click on the resolution to change the display mode.
+- Low resolution modes and minimum refresh rates can be set in the settingsfor the All Modes list
+- Current mode(s) will be highlighted in bold, blue font.
+- Favourites can be set in the app settings.
+- Refresh Displays when displays are added or changed.
 
 <img src="assets/displaymode-menu.jpg" alt="Copy Display Name" width="400">
-
-### Default Favorites
-
-The app comes pre-configured with a comprehensive list of 22 common display resolutions:
-
-- **5K**: 5120×2880@60 HiDPI
-- **4K**: 3840×2160@60/144 (both HiDPI and non-HiDPI)
-- **2K**: 2560×1440@60/144/165, 2560×1600@60 HiDPI
-- **Full HD+**: 1920×1200@60/120 HiDPI
-- **Full HD**: 1920×1080@60 HiDPI, 1920×1080@144 non-HiDPI
-- **MacBook Retina**: 1728×1117@60/120 HiDPI
-- **Common**: 1680×1050, 1512×982, 1440×900, 1280×800 (all @60/120 HiDPI)
-- **Low**: 1152×720@60 HiDPI
-
-You can customize this list in the **Settings** window (menu bar icon → Settings), or use the **Reset to Default** button to restore the default list.
 
 ## Shortcuts Integration
 

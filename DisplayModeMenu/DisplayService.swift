@@ -69,8 +69,41 @@ struct ResolutionSpec {
     let width: Int
     let height: Int
     let refreshRate: Double?  // nil if not specified
+    let hiDPI: Bool?  // nil if not specified
     
     static func parse(_ input: String) -> ResolutionSpec? {
+        // Try new format first: width,height,refreshRate,hiDPI (e.g., "2560,1440,60,true")
+        if let commaSpec = parseCommaFormat(input) {
+            return commaSpec
+        }
+        
+        // Fall back to legacy format: widthxheight[@refresh] (e.g., "1920x1080@60")
+        return parseLegacyFormat(input)
+    }
+    
+    private static func parseCommaFormat(_ input: String) -> ResolutionSpec? {
+        let parts = input.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+        
+        guard parts.count >= 2,
+              let width = Int(parts[0]),
+              let height = Int(parts[1]) else {
+            return nil
+        }
+        
+        var refreshRate: Double? = nil
+        if parts.count >= 3, let parsed = Double(parts[2]) {
+            refreshRate = parsed
+        }
+        
+        var hiDPI: Bool? = nil
+        if parts.count >= 4, let parsed = Bool(parts[3].lowercased()) {
+            hiDPI = parsed
+        }
+        
+        return ResolutionSpec(width: width, height: height, refreshRate: refreshRate, hiDPI: hiDPI)
+    }
+    
+    private static func parseLegacyFormat(_ input: String) -> ResolutionSpec? {
         // Regex pattern: width x height [@refresh]
         let pattern = #"^(\d{3,5})\s*x\s*(\d{3,5})(?:@(\d{1,3}(?:\.\d+)?))?$"#
         
@@ -93,7 +126,7 @@ struct ResolutionSpec {
             refreshRate = refresh
         }
         
-        return ResolutionSpec(width: width, height: height, refreshRate: refreshRate)
+        return ResolutionSpec(width: width, height: height, refreshRate: refreshRate, hiDPI: nil)
     }
 }
 

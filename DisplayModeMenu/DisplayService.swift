@@ -69,8 +69,41 @@ struct ResolutionSpec {
     let width: Int
     let height: Int
     let refreshRate: Double?  // nil if not specified
+    let hiDPI: Bool?  // nil if not specified
     
     static func parse(_ input: String) -> ResolutionSpec? {
+        // Try new format first: width,height,refreshRate,hiDPI (e.g., "2560,1440,60,true")
+        if let commaSpec = parseCommaFormat(input) {
+            return commaSpec
+        }
+        
+        // Fall back to legacy format: widthxheight[@refresh] (e.g., "1920x1080@60")
+        return parseLegacyFormat(input)
+    }
+    
+    private static func parseCommaFormat(_ input: String) -> ResolutionSpec? {
+        let parts = input.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+        
+        guard parts.count >= 2,
+              let width = Int(parts[0]),
+              let height = Int(parts[1]) else {
+            return nil
+        }
+        
+        var refreshRate: Double? = nil
+        if parts.count >= 3, let parsed = Double(parts[2]) {
+            refreshRate = parsed
+        }
+        
+        var hiDPI: Bool? = nil
+        if parts.count >= 4, let parsed = Bool(parts[3].lowercased()) {
+            hiDPI = parsed
+        }
+        
+        return ResolutionSpec(width: width, height: height, refreshRate: refreshRate, hiDPI: hiDPI)
+    }
+    
+    private static func parseLegacyFormat(_ input: String) -> ResolutionSpec? {
         // Regex pattern: width x height [@refresh]
         let pattern = #"^(\d{3,5})\s*x\s*(\d{3,5})(?:@(\d{1,3}(?:\.\d+)?))?$"#
         
@@ -93,19 +126,35 @@ struct ResolutionSpec {
             refreshRate = refresh
         }
         
-        return ResolutionSpec(width: width, height: height, refreshRate: refreshRate)
+        return ResolutionSpec(width: width, height: height, refreshRate: refreshRate, hiDPI: nil)
     }
 }
 
 class DisplayService {
     static let shared = DisplayService()
     
+    // Cache for display enumeration (invalidated on hot-plug)
+    private var displaysCache: [DisplayInfo]?
+    
     private init() {}
     
     // MARK: - Display Enumeration
     
+    /// Invalidate the display cache (call when displays are hot-plugged)
+    func invalidateDisplayCache() {
+        displaysCache = nil
+        #if DEBUG
+        NSLog("[DisplayService] Display cache invalidated")
+        #endif
+    }
+    
     /// Get all active displays with disambiguated names
     func getDisplays() -> [DisplayInfo] {
+        // Return cached displays if available
+        if let cached = displaysCache {
+            return cached
+        }
+        
         var displays: [DisplayInfo] = []
         
         // Get all screens
@@ -142,6 +191,11 @@ class DisplayService {
             ))
         }
         
+        // Cache the result
+        displaysCache = displays
+        #if DEBUG
+        NSLog("[DisplayService] Cached \(displays.count) display(s)")
+        #endif
         return displays
     }
     
@@ -225,64 +279,43 @@ class DisplayService {
     func findMatchingMode(for spec: ResolutionSpec, displayID: CGDirectDisplayID) -> DisplayModeInfo? {
         let modes = getModes(for: displayID)
         
-        // 1. Try exact match (width, height, and refresh if specified)
-        if let exactMatch = modes.first(where: { mode in
-            mode.width == spec.width &&
-            mode.height == spec.height &&
-            (spec.refreshRate == nil || matchesRefreshRate(spec.refreshRate!, actual: mode.refreshRate))
-        }) {
-            return exactMatch
-        }
+        guard !modes.isEmpty else { return nil }
         
-        // 2. Try resolution match without refresh constraint
-        let resolutionMatches = modes.filter { $0.width == spec.width && $0.height == spec.height }
-        if !resolutionMatches.isEmpty {
-            // Prefer HiDPI, then closest refresh rate
-            return resolutionMatches.sorted { lhs, rhs in
-                if lhs.isHiDPI != rhs.isHiDPI {
-                    return lhs.isHiDPI && !rhs.isHiDPI
-                }
-                if let targetRefresh = spec.refreshRate {
-                    let lhsDiff = abs(lhs.refreshRate - targetRefresh)
-                    let rhsDiff = abs(rhs.refreshRate - targetRefresh)
-                    return lhsDiff < rhsDiff
-                }
-                return lhs.refreshRate > rhs.refreshRate
-            }.first
+        // Use single-pass min(by:) to find best match based on scoring
+        return modes.min { lhs, rhs in
+            // Score each mode (lower is better)
+            let lhsScore = calculateMatchScore(mode: lhs, spec: spec)
+            let rhsScore = calculateMatchScore(mode: rhs, spec: spec)
+            return lhsScore < rhsScore
         }
-        
-        // 3. Find closest resolution
-        let sortedByDistance = modes.sorted { lhs, rhs in
-            let lhsDist = resolutionDistance(spec.width, spec.height, lhs.width, lhs.height)
-            let rhsDist = resolutionDistance(spec.width, spec.height, rhs.width, rhs.height)
-            
-            if lhsDist != rhsDist {
-                return lhsDist < rhsDist
-            }
-            // Prefer HiDPI when distance is equal
-            if lhs.isHiDPI != rhs.isHiDPI {
-                return lhs.isHiDPI && !rhs.isHiDPI
-            }
-            if let targetRefresh = spec.refreshRate {
-                let lhsRefreshDiff = abs(lhs.refreshRate - targetRefresh)
-                let rhsRefreshDiff = abs(rhs.refreshRate - targetRefresh)
-                return lhsRefreshDiff < rhsRefreshDiff
-            }
-            return lhs.refreshRate > rhs.refreshRate
-        }
-        
-        return sortedByDistance.first
     }
     
-    private func matchesRefreshRate(_ specified: Double, actual: Double) -> Bool {
-        let tolerance = 0.5
-        return abs(specified - actual) < tolerance
-    }
-    
-    private func resolutionDistance(_ w1: Int, _ h1: Int, _ w2: Int, _ h2: Int) -> Double {
-        let dw = Double(w1 - w2)
-        let dh = Double(h1 - h2)
-        return sqrt(dw * dw + dh * dh)
+    /// Calculate match score for a mode (lower is better)
+    private func calculateMatchScore(mode: DisplayModeInfo, spec: ResolutionSpec) -> Double {
+        var score: Double = 0
+        
+        // 1. Resolution match (highest priority)
+        let widthDiff = abs(mode.width - spec.width)
+        let heightDiff = abs(mode.height - spec.height)
+        let resolutionDistance = sqrt(Double(widthDiff * widthDiff + heightDiff * heightDiff))
+        score += resolutionDistance * 10000  // High weight for resolution
+        
+        // 2. HiDPI preference (if specified or default prefer HiDPI)
+        let preferHiDPI = spec.hiDPI ?? true
+        if mode.isHiDPI != preferHiDPI {
+            score += 1000  // Penalty for not matching HiDPI preference
+        }
+        
+        // 3. Refresh rate match (if specified)
+        if let targetRefresh = spec.refreshRate {
+            let refreshDiff = abs(mode.refreshRate - targetRefresh)
+            score += refreshDiff * 10  // Moderate weight for refresh rate
+        } else {
+            // Prefer higher refresh rate when not specified
+            score += (120 - mode.refreshRate)  // Assumes max 120Hz
+        }
+        
+        return score
     }
     
     // MARK: - Mode Setting
@@ -301,6 +334,13 @@ class DisplayService {
         guard let spec = ResolutionSpec.parse(resolution) else {
             return .failure(.invalidResolutionFormat)
         }
+        
+        return setMode(spec: spec, displayName: displayName)
+    }
+    
+    /// Set a display mode using a pre-parsed ResolutionSpec (avoids double parsing)
+    @discardableResult
+    func setMode(spec: ResolutionSpec, displayName: String? = nil) -> Result<String, DisplayModeError> {
         
         // Find target display
         let display: DisplayInfo?
@@ -322,7 +362,8 @@ class DisplayService {
         
         // Find matching mode
         guard let mode = findMatchingMode(for: spec, displayID: targetDisplay.id) else {
-            return .failure(.noMatchingMode(resolution))
+            let specString = "\(spec.width)x\(spec.height)" + (spec.refreshRate.map { "@\(Int($0))" } ?? "")
+            return .failure(.noMatchingMode(specString))
         }
         
         // Apply mode

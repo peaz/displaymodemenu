@@ -18,24 +18,27 @@ struct SetDisplayModeIntent: AppIntent {
     
     @Parameter(
         title: "Resolution",
-        description: "Resolution in format like '1920x1080@60' or '1920x1080'",
+        description: "Settings format: '2560,1440,60,true' or Legacy: '1920x1080@60'",
         inputOptions: String.IntentInputOptions(
             keyboardType: .default,
             capitalizationType: .none,
+            multiline: false,
             autocorrect: false
-        )
+        ),
+        requestValueDialog: IntentDialog("Enter resolution in format: width,height,refreshRate,hiDPI\nExample: 2560,1440,60,true\n\nOr legacy format: 1920x1080@60")
     )
     var resolution: String
     
     @Parameter(
         title: "Display Name",
-        description: "Name of the display (e.g., 'Built-in Retina Display-0'). Leave empty for main display.",
-        default: nil
+        description: "Name of the display (e.g., 'DELL U2723QE'). Leave empty for main display.",
+        default: nil,
+        requestValueDialog: IntentDialog("Optional: Enter the display name for multi-display setups.\n\nLeave empty to use the main display.\n\nTip: Copy display name by clicking on the name on the DisplayMode menu")
     )
     var displayName: String?
     
     static var parameterSummary: some ParameterSummary {
-        Summary("Set display to \(\.$resolution)") {
+        Summary("Set \(\.$displayName) to \(\.$resolution)") {
             \.$displayName
         }
     }
@@ -44,15 +47,15 @@ struct SetDisplayModeIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
         let displayService = DisplayService.shared
         
-        // Validate resolution format first
-        guard ResolutionSpec.parse(resolution) != nil else {
+        // Parse and validate resolution format
+        guard let spec = ResolutionSpec.parse(resolution) else {
             return .result(
-                dialog: IntentDialog(stringLiteral: "Invalid resolution format. Use format like '1920x1080@60' or '1920x1080'.")
+                dialog: IntentDialog(stringLiteral: "Invalid format. Use:\nSettings: 2560,1440,60,true\nLegacy: 1920x1080@60")
             )
         }
         
-        // Attempt to set the mode
-        let result = displayService.setMode(resolution: resolution, displayName: displayName)
+        // Attempt to set the mode using pre-parsed spec (avoids double parsing)
+        let result = displayService.setMode(spec: spec, displayName: displayName)
         
         switch result {
         case .success(let message):

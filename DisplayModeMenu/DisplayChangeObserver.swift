@@ -25,6 +25,11 @@ class DisplayChangeObserver {
             
             // Check if this is a significant change
             if flags.contains(.addFlag) || flags.contains(.removeFlag) || flags.contains(.setModeFlag) {
+                // Invalidate display cache on hot-plug events
+                if flags.contains(.addFlag) || flags.contains(.removeFlag) {
+                    DisplayService.shared.invalidateDisplayCache()
+                }
+                
                 // Refresh menu on main thread
                 DispatchQueue.main.async {
                     observer.menuController?.refreshMenu()
@@ -61,7 +66,8 @@ class DisplayChangeObserver {
     }
     
     @objc private func screenParametersChanged() {
-        // Refresh menu when screen parameters change
+        // Invalidate display cache and refresh menu when screen parameters change
+        DisplayService.shared.invalidateDisplayCache()
         DispatchQueue.main.async {
             self.menuController?.refreshMenu()
         }

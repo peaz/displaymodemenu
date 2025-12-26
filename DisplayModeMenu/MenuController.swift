@@ -65,10 +65,14 @@ class MenuController: NSObject, NSMenuDelegate {
             if let image = NSImage(systemSymbolName: "display", accessibilityDescription: "Display Modes") {
                 button.image = image
                 button.image?.isTemplate = true
+                #if DEBUG
                 NSLog("[MenuController] Using SF Symbol icon")
+                #endif
             } else {
                 button.title = "🖥️"
+                #if DEBUG
                 NSLog("[MenuController] Using emoji icon")
+                #endif
             }
         }
         
@@ -86,11 +90,16 @@ class MenuController: NSObject, NSMenuDelegate {
     private func restoreLastUsedResolutions() {
         let lastUsed = Preferences.lastUsedResolutions
         guard !lastUsed.isEmpty else {
+            #if DEBUG
             NSLog("[MenuController] No last used resolutions to restore")
+            #endif
             return
         }
         
+        #if DEBUG
         NSLog("[MenuController] Restoring last used resolutions...")
+        #endif
+        var restoredCount = 0
         
         for display in displaysCache {
             guard let savedMode = lastUsed[display.name] else { continue }
@@ -108,31 +117,49 @@ class MenuController: NSObject, NSMenuDelegate {
                 let mode = matchingCached.mode
                 // Only restore if not already current
                 if !mode.isCurrent {
+                    #if DEBUG
                     NSLog("[MenuController] Restoring \(display.name) to \(mode.label)")
+                    #endif
                     let success = displayService.setMode(mode, for: display.id)
                     if success {
+                        #if DEBUG
                         NSLog("[MenuController] Successfully restored \(display.name)")
+                        #endif
+                        restoredCount += 1
                     } else {
+                        #if DEBUG
                         NSLog("[MenuController] Failed to restore \(display.name)")
+                        #endif
                     }
                 } else {
+                    #if DEBUG
                     NSLog("[MenuController] \(display.name) already at saved resolution")
+                    #endif
                 }
             } else {
+                #if DEBUG
                 NSLog("[MenuController] Saved resolution for \(display.name) not available")
+                #endif
             }
         }
         
-        // Recache modes after restoration to update current flags
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.cacheDisplayModes()
-            self?.refreshMenu()
+        // Only recache if we actually restored at least one resolution
+        if restoredCount > 0 {
+            #if DEBUG
+            NSLog("[MenuController] Recaching modes after restoring \(restoredCount) resolution(s)")
+            #endif
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.cacheDisplayModes()
+                self?.refreshMenu()
+            }
         }
     }
     
     // MARK: - Display Mode Caching
     func cacheDisplayModes() {
+        #if DEBUG
         NSLog("[MenuController] Caching display modes...")
+        #endif
         displaysCache = displayService.getDisplays()
         modeCache.removeAll()
         
@@ -153,7 +180,9 @@ class MenuController: NSObject, NSMenuDelegate {
             }
             
             modeCache[display.id] = cachedModes
+            #if DEBUG
             NSLog("[MenuController] Cached \(cachedModes.count) modes for display: \(display.name)")
+            #endif
         }
     }
     
@@ -377,11 +406,15 @@ class MenuController: NSObject, NSMenuDelegate {
     // MARK: - Actions
     @objc private func modeSelected(_ sender: NSMenuItem) {
         guard let selection = sender.representedObject as? ModeSelection else {
+            #if DEBUG
             NSLog("[MenuController] ERROR: No ModeSelection in represented object")
+            #endif
             return
         }
         
+        #if DEBUG
         NSLog("[MenuController] Switching to mode: \(selection.mode.label) on display \(selection.displayID)")
+        #endif
         
         let success = displayService.setMode(selection.mode, for: selection.displayID)
         
@@ -457,11 +490,15 @@ class MenuController: NSObject, NSMenuDelegate {
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
+                #if DEBUG
                 NSLog("[MenuController] Notification error: \(error)")
+                #endif
             }
         }
         
+        #if DEBUG
         NSLog("[MenuController] Copied display name to clipboard: \(displayName)")
+        #endif
     }
     
     // MARK: - NSMenuDelegate

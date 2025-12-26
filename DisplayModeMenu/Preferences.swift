@@ -60,7 +60,9 @@ final class Preferences {
             do {
                 return try JSONDecoder().decode([FavoriteResolution].self, from: data)
             } catch {
+                #if DEBUG
                 NSLog("[Preferences] Failed to decode favorites: \(error)")
+                #endif
                 return []
             }
         }
@@ -69,7 +71,9 @@ final class Preferences {
                 let data = try JSONEncoder().encode(newValue)
                 UserDefaults.standard.set(data, forKey: Keys.favoriteResolutions)
             } catch {
+                #if DEBUG
                 NSLog("[Preferences] Failed to encode favorites: \(error)")
+                #endif
             }
         }
     }
@@ -100,9 +104,13 @@ final class Preferences {
                 } else {
                     try service.unregister()
                 }
+                #if DEBUG
                 NSLog("[Preferences] Start at login \(newValue ? "enabled" : "disabled")")
+                #endif
             } catch {
+                #if DEBUG
                 NSLog("[Preferences] Failed to update login item: \(error)")
+                #endif
             }
         }
     }
@@ -143,7 +151,9 @@ final class Preferences {
             do {
                 return try JSONDecoder().decode([String: FavoriteResolution].self, from: data)
             } catch {
+                #if DEBUG
                 NSLog("[Preferences] Failed to decode last used resolutions: \(error)")
+                #endif
                 return [:]
             }
         }
@@ -152,7 +162,9 @@ final class Preferences {
                 let data = try JSONEncoder().encode(newValue)
                 UserDefaults.standard.set(data, forKey: Keys.lastUsedResolutions)
             } catch {
+                #if DEBUG
                 NSLog("[Preferences] Failed to encode last used resolutions: \(error)")
+                #endif
             }
         }
     }

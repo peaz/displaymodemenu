@@ -18,3 +18,4 @@ build/XCBuildData
 build/Release/DisplayModeMenu.app.dSYM
 build/Release/DisplayModeMenu.swiftmodule
 *.app/
+scripts/test_app.sh

@@ -133,12 +133,31 @@ struct ResolutionSpec {
 class DisplayService {
     static let shared = DisplayService()
     
+    // Cache for display enumeration (invalidated on hot-plug)
+    private var displaysCache: [DisplayInfo]?
+    
     private init() {}
     
     // MARK: - Display Enumeration
     
+    /// Invalidate the display cache (call when displays are hot-plugged)
+    func invalidateDisplayCache() {
+        displaysCache = nil
+        #if DEBUG
+        NSLog("[DisplayService] Display cache invalidated")
+        #endif
+    }
+    
     /// Get all active displays with disambiguated names
     func getDisplays() -> [DisplayInfo] {
+        // Return cached displays if available
+        if let cached = displaysCache {
+            return cached
+        }
+        
+        #if DEBUG
+        NSLog("[DisplayService] Building display list...")
+        #endif
         var displays: [DisplayInfo] = []
         
         // Get all screens
@@ -175,6 +194,11 @@ class DisplayService {
             ))
         }
         
+        // Cache the result
+        displaysCache = displays
+        #if DEBUG
+        NSLog("[DisplayService] Cached \(displays.count) display(s)")
+        #endif
         return displays
     }
     

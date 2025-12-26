@@ -51,13 +51,6 @@ class MenuController: NSObject, NSMenuDelegate {
         quitIconImage = NSImage(systemSymbolName: "xmark.circle", accessibilityDescription: "Quit")
         supportIconimage = NSImage(systemSymbolName: "heart.fill", accessibilityDescription: "Support")
         
-        // Pre-warm the attributed string system by creating a dummy attributed string
-        // This caches the font lookup and text rendering system
-        let _ = NSAttributedString(string: "warmup", attributes: [
-            .font: NSFont.boldSystemFont(ofSize: 0),
-            .foregroundColor: NSColor.systemBlue
-        ])
-        
         // Create status bar item
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         
@@ -65,14 +58,8 @@ class MenuController: NSObject, NSMenuDelegate {
             if let image = NSImage(systemSymbolName: "display", accessibilityDescription: "Display Modes") {
                 button.image = image
                 button.image?.isTemplate = true
-                #if DEBUG
-                NSLog("[MenuController] Using SF Symbol icon")
-                #endif
             } else {
                 button.title = "🖥️"
-                #if DEBUG
-                NSLog("[MenuController] Using emoji icon")
-                #endif
             }
         }
         
@@ -90,15 +77,9 @@ class MenuController: NSObject, NSMenuDelegate {
     private func restoreLastUsedResolutions() {
         let lastUsed = Preferences.lastUsedResolutions
         guard !lastUsed.isEmpty else {
-            #if DEBUG
-            NSLog("[MenuController] No last used resolutions to restore")
-            #endif
             return
         }
         
-        #if DEBUG
-        NSLog("[MenuController] Restoring last used resolutions...")
-        #endif
         var restoredCount = 0
         
         for display in displaysCache {
@@ -131,10 +112,6 @@ class MenuController: NSObject, NSMenuDelegate {
                         NSLog("[MenuController] Failed to restore \(display.name)")
                         #endif
                     }
-                } else {
-                    #if DEBUG
-                    NSLog("[MenuController] \(display.name) already at saved resolution")
-                    #endif
                 }
             } else {
                 #if DEBUG
@@ -157,9 +134,6 @@ class MenuController: NSObject, NSMenuDelegate {
     
     // MARK: - Display Mode Caching
     func cacheDisplayModes() {
-        #if DEBUG
-        NSLog("[MenuController] Caching display modes...")
-        #endif
         displaysCache = displayService.getDisplays()
         modeCache.removeAll()
         
@@ -184,6 +158,13 @@ class MenuController: NSObject, NSMenuDelegate {
             NSLog("[MenuController] Cached \(cachedModes.count) modes for display: \(display.name)")
             #endif
         }
+    }
+    
+    // MARK: - Helper Methods
+    
+    /// Generate a unique key for mode deduplication
+    private func generateModeKey(mode: DisplayModeInfo) -> String {
+        return "\(mode.width)x\(mode.height)@\(Int(mode.refreshRate))_\(mode.isHiDPI)"
     }
     
     func refreshMenu() {
@@ -270,7 +251,7 @@ class MenuController: NSObject, NSMenuDelegate {
             
             for cached in cachedModes where cached.isFavorite {
                 let mode = cached.mode
-                let key = "\(mode.width)x\(mode.height)@\(Int(mode.refreshRate))_\(mode.isHiDPI)"
+                let key = generateModeKey(mode: mode)
                 guard !seenFavorites.contains(key) else { continue }
                 seenFavorites.insert(key)
                 
@@ -351,7 +332,7 @@ class MenuController: NSObject, NSMenuDelegate {
             var seenModes = Set<String>()
             let modes = filteredCached.filter { cached in
                 let mode = cached.mode
-                let key = "\(mode.width)x\(mode.height)@\(Int(mode.refreshRate))_\(mode.isHiDPI)"
+                let key = generateModeKey(mode: mode)
                 let isNew = !seenModes.contains(key)
                 seenModes.insert(key)
                 return isNew
@@ -419,8 +400,6 @@ class MenuController: NSObject, NSMenuDelegate {
         let success = displayService.setMode(selection.mode, for: selection.displayID)
         
         if success {
-            NSLog("[MenuController] Mode switch successful")
-            
             // Save this resolution as last used for this display
             if let display = displaysCache.first(where: { $0.id == selection.displayID }) {
                 var lastUsed = Preferences.lastUsedResolutions
@@ -431,16 +410,15 @@ class MenuController: NSObject, NSMenuDelegate {
                     hiDPI: selection.mode.isHiDPI
                 )
                 Preferences.lastUsedResolutions = lastUsed
-                NSLog("[MenuController] Saved last used resolution for \(display.name): \(selection.mode.label)")
             }
             
-            // Refresh menu to update highlighted current mode
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                self?.cacheDisplayModes()
-                self?.refreshMenu()
-            }
+            // Refresh menu immediately to update highlighted current mode
+            cacheDisplayModes()
+            refreshMenu()
         } else {
+            #if DEBUG
             NSLog("[MenuController] Mode switch failed")
+            #endif
             let alert = NSAlert()
             alert.messageText = "Failed to change display mode"
             alert.informativeText = "The selected resolution may not be supported."
@@ -450,7 +428,6 @@ class MenuController: NSObject, NSMenuDelegate {
     }
     
     @objc private func refreshDisplaysAction(_ sender: NSMenuItem) {
-        NSLog("[MenuController] Refreshing displays...")
         cacheDisplayModes()
         refreshMenu()
     }
@@ -495,10 +472,6 @@ class MenuController: NSObject, NSMenuDelegate {
                 #endif
             }
         }
-        
-        #if DEBUG
-        NSLog("[MenuController] Copied display name to clipboard: \(displayName)")
-        #endif
     }
     
     // MARK: - NSMenuDelegate

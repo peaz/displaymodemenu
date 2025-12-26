@@ -47,15 +47,15 @@ struct SetDisplayModeIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
         let displayService = DisplayService.shared
         
-        // Validate resolution format first
-        guard ResolutionSpec.parse(resolution) != nil else {
+        // Parse and validate resolution format
+        guard let spec = ResolutionSpec.parse(resolution) else {
             return .result(
                 dialog: IntentDialog(stringLiteral: "Invalid format. Use:\nSettings: 2560,1440,60,true\nLegacy: 1920x1080@60")
             )
         }
         
-        // Attempt to set the mode
-        let result = displayService.setMode(resolution: resolution, displayName: displayName)
+        // Attempt to set the mode using pre-parsed spec (avoids double parsing)
+        let result = displayService.setMode(spec: spec, displayName: displayName)
         
         switch result {
         case .success(let message):

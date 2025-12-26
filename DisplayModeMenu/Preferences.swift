@@ -104,9 +104,6 @@ final class Preferences {
                 } else {
                     try service.unregister()
                 }
-                #if DEBUG
-                NSLog("[Preferences] Start at login \(newValue ? "enabled" : "disabled")")
-                #endif
             } catch {
                 #if DEBUG
                 NSLog("[Preferences] Failed to update login item: \(error)")
@@ -123,23 +120,6 @@ final class Preferences {
         set {
             UserDefaults.standard.set(newValue, forKey: Keys.showLowResolution)
         }
-    }
-    
-    // MARK: - Favorite Toggle
-    static func toggleFavorite(width: Int, height: Int, refreshRate: Double, hiDPI: Bool) {
-        var favorites = favoriteResolutions
-        let fav = FavoriteResolution(width: width, height: height, refreshRate: refreshRate, hiDPI: hiDPI)
-        if let idx = favorites.firstIndex(of: fav) {
-            favorites.remove(at: idx)
-        } else {
-            favorites.append(fav)
-        }
-        favoriteResolutions = favorites
-    }
-    
-    static func isFavorite(width: Int, height: Int, refreshRate: Double, hiDPI: Bool) -> Bool {
-        let fav = FavoriteResolution(width: width, height: height, refreshRate: refreshRate, hiDPI: hiDPI)
-        return favoriteResolutions.contains(fav)
     }
     
     // MARK: - Last Used Resolutions (Auto-restore on launch)

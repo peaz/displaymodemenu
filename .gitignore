@@ -17,4 +17,4 @@ build/SwiftExplicitPrecompiledModules
 build/XCBuildData
 build/Release/DisplayModeMenu.app.dSYM
 build/Release/DisplayModeMenu.swiftmodule
-build/Release/DisplayModeMenu.app
+*.app/

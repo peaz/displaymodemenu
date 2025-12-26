@@ -10,7 +10,6 @@ DEVELOPMENT.md
 **/project.xcworkspace/xcuserdata/
 DerivedData/
 .swiftpm/
-.build/
 build/displaymodemenu.build
 build/EagerLinkingTBDs
 build/ExplicitPrecompiledModules
@@ -18,3 +17,4 @@ build/SwiftExplicitPrecompiledModules
 build/XCBuildData
 build/Release/DisplayModeMenu.app.dSYM
 build/Release/DisplayModeMenu.swiftmodule
+build/Release/DisplayModeMenu.app
